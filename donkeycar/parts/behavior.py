@@ -42,4 +42,10 @@ class BehaviorPart(object):
 
     def shutdown(self):
         pass
-        
+
+class PilotCondition:
+        def run(self, mode):
+            if mode == 'user':
+                return False
+            else:
+                return True
