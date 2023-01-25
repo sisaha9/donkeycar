@@ -34,40 +34,40 @@ class LoggerPart:
         self.running = False
 
 class RecordTracker:
-        def __init__(self, logger, rec_count_alert, rec_count_alert_cyc, record_alert_color_arr):
-            self.last_num_rec_print = 0
-            self.dur_alert = 0
-            self.force_alert = 0
-            self.logger = logger
-            self.rec_count_alert = rec_count_alert
-            self.rec_count_alert_cyc = rec_count_alert_cyc
-            self.record_alert_color_arr = record_alert_color_arr
+    def __init__(self, logger, rec_count_alert, rec_count_alert_cyc, record_alert_color_arr):
+        self.last_num_rec_print = 0
+        self.dur_alert = 0
+        self.force_alert = 0
+        self.logger = logger
+        self.rec_count_alert = rec_count_alert
+        self.rec_count_alert_cyc = rec_count_alert_cyc
+        self.record_alert_color_arr = record_alert_color_arr
 
-        def run(self, num_records):
-            if num_records is None:
-                return 0
-
-            if self.last_num_rec_print != num_records or self.force_alert:
-                self.last_num_rec_print = num_records
-
-                if num_records % 10 == 0:
-                    self.logger.info("recorded", num_records, "records")
-
-                if num_records % self.rec_count_alert == 0 or self.force_alert:
-                    self.dur_alert = num_records // self.rec_count_alert * self.rec_count_alert_cyc
-                    self.force_alert = 0
-
-            if self.dur_alert > 0:
-                self.dur_alert -= 1
-
-            if self.dur_alert != 0:
-                return self.get_record_alert_color(num_records)
-
+    def run(self, num_records):
+        if num_records is None:
             return 0
+        num_records = num_records[0]
+        if self.last_num_rec_print != num_records or self.force_alert:
+            self.last_num_rec_print = num_records
 
-        def get_record_alert_color(self, num_records):
-            col = (0, 0, 0)
-            for count, color in self.record_alert_color_arr:
-                if num_records >= count:
-                    col = color
-            return col
+            if num_records % 10 == 0:
+                self.logger.info("recorded", num_records, "records")
+
+            if num_records % self.rec_count_alert == 0 or self.force_alert:
+                self.dur_alert = num_records // self.rec_count_alert * self.rec_count_alert_cyc
+                self.force_alert = 0
+
+        if self.dur_alert > 0:
+            self.dur_alert -= 1
+
+        if self.dur_alert != 0:
+            return self.get_record_alert_color(num_records)
+
+        return 0
+
+    def get_record_alert_color(self, num_records):
+        col = (0, 0, 0)
+        for count, color in self.record_alert_color_arr:
+            if num_records >= count:
+                col = color
+        return col
