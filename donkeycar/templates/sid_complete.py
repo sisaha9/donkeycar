@@ -386,7 +386,7 @@ def add_autopilot(V, cfg, ctr):
           inputs=['user/mode', 'pilot/throttle'],
           outputs=['pilot/throttle'])
     from donkeycar.parts.behavior import DriveMode
-    V.add(DriveMode(),
+    V.add(DriveMode(cfg.AI_THROTTLE_MULT),
           inputs=['user/mode', 'user/angle', 'user/throttle',
                   'pilot/angle', 'pilot/throttle'],
           outputs=['angle', 'throttle'])
