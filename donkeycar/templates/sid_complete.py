@@ -41,16 +41,18 @@ from donkeycar.utils import *
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-
+    
 def enable_logging(cfg):
     logger.setLevel(logging.getLevelName(cfg.LOGGING_LEVEL))
     ch = logging.StreamHandler()
     ch.setFormatter(logging.Formatter(cfg.LOGGING_FORMAT))
     logger.addHandler(ch)
 
-def enable_telemetry(cfg):
+def enable_telemetry(V, cfg, inputs, types):
     from donkeycar.parts.telemetry import MqttTelemetry
     tel = MqttTelemetry(cfg)
+    telem_inputs, _ = tel.add_step_inputs(inputs, types)
+    V.add(tel, inputs=telem_inputs, outputs=["tub/queue_size"], threaded=True)
 
 def add_simulator(V, cfg):
     #the simulator will use cuda and then we usually run out of resources
@@ -225,260 +227,150 @@ def add_pilot_condition(V):
     from donkeycar.parts.behavior import PilotCondition
 
     V.add(PilotCondition(), inputs=['user/mode'], outputs=['run_pilot'])
-#
-# Drive train setup
-#
-def add_drivetrain(V, cfg):
-    logger.info("cfg.DRIVE_TRAIN_TYPE %s"%cfg.DRIVE_TRAIN_TYPE)
-    if cfg.DRIVE_TRAIN_TYPE == "MOCK":
-        return
-    elif cfg.DRIVE_TRAIN_TYPE == "VESC":
-        from donkeycar.parts.actuator import VESC
-        logger.info("Creating VESC at port {}".format(cfg.VESC_SERIAL_PORT))
-        if cfg.HAVE_IMU and cfg.IMU_TYPE == "VESC":
-            vesc = VESC(cfg.VESC_SERIAL_PORT,
-                        cfg.VESC_MAX_SPEED_PERCENT,
-                        cfg.VESC_HAS_SENSOR,
-                        cfg.VESC_START_HEARTBEAT,
-                        cfg.VESC_BAUDRATE,
-                        cfg.VESC_TIMEOUT,
-                        cfg.VESC_STEERING_SCALE,
-                        cfg.VESC_STEERING_OFFSET
-                    )
-        elif cfg.HAVE_ODOMETRY and cfg.ODOM_TYPE == "VESC":
-            pass
-        V.add(vesc, inputs=['angle', 'throttle'])
-    else:
-        logger.info("This Drive Train Type is not yet supported in this template")
 
-def drive(cfg):
-    V = dk.Vehicle()
-    logger.info(f'PID: {os.getpid()}')
-    #Initialize car
-    V = dk.vehicle.Vehicle()
-
-    #Initialize logging before anything else to allow console logging
-    if cfg.HAVE_CONSOLE_LOGGING:
-        enable_logging(cfg)
-
-    if cfg.HAVE_MQTT_TELEMETRY:
-        enable_telemetry(cfg)
-
-    logger.info(f'PID: {os.getpid()}')
-    if cfg.DONKEY_GYM:
-        add_simulator(V, cfg)
-    else:
-        if cfg.HAVE_ODOM:
-            # add odometry
-            add_odometry(V, cfg)
-        if cfg.HAVE_CAMERA:
-            # setup primary camera
-            add_camera(V, cfg, camera_type)
-        if cfg.HAVE_LIDAR:
-            # add lidar
-            add_lidar(V, cfg)
-        if cfg.HAVE_IMU:
-            # add IMU
-            add_imu(V, cfg)
-    ctr, has_input_controller = add_user_controller(V, cfg)
-    add_web_buttons(V)
-    add_throttle_reverse(V)
-    add_pilot_condition(V)
-    if cfg.HAVE_FPS_COUNTER:
-        # enable FPS counter
-        enable_fps(V, cfg)
-    if cfg.HAVE_PERFMON:
-        enable_perfmon(V, cfg)
-    
-    if not cfg.DONKEY_GYM:
-        if cfg.HAVE_DRIVETRAIN:
-            add_drivetrain(V, cfg)
-        
-        
-
-if __name__ == '__main__':
-    args = docopt(__doc__)
-    cfg = dk.load_config(myconfig=args['--myconfig'])
-    drive(cfg, args)
-    if args['behavior_clone_drive']:
-        model_type = args['--type']
-        camera_type = args['--camera']
-        drive(cfg, model_path=args['--model'], use_joystick=args['--js'],
-              model_type=model_type, camera_type=camera_type,
-              meta=args['--meta'])
-    elif args['gps_follow_drive']:
-        pass
-    else:
-        logger.info('Unsupported arg passed\n')
-
-
-def drive(cfg, model_path=None, use_joystick=False, model_type=None,
-          camera_type='single', meta=[]):
-    """
-    Construct a working robotic vehicle from many parts. Each part runs as a
-    job in the Vehicle loop, calling either it's run or run_threaded method
-    depending on the constructor flag `threaded`. All parts are updated one
-    after another at the framerate given in cfg.DRIVE_LOOP_HZ assuming each
-    part finishes processing in a timely manner. Parts may have named outputs
-    and inputs. The framework handles passing named outputs to parts
-    requesting the same named input.
-    """
-
-    rec_tracker_part = RecordTracker()
+def add_record_tracker(V, cfg, ctr):
+    from donkeycar.parts.logger import RecordTracker
+    rec_tracker_part = RecordTracker(logger, cfg.REC_COUNT_ALERT, cfg.REC_COUNT_ALERT_CYC, cfg.RECORD_ALERT_COLOR_ARR)
     V.add(rec_tracker_part, inputs=["tub/num_records"], outputs=['records/alert'])
 
     if cfg.AUTO_RECORD_ON_THROTTLE:
         def show_record_count_status():
             rec_tracker_part.last_num_rec_print = 0
             rec_tracker_part.force_alert = 1
-        if (cfg.CONTROLLER_TYPE != "pigpio_rc") and (cfg.CONTROLLER_TYPE != "MM1"):  # these controllers don't use the joystick class
-            if isinstance(ctr, JoystickController):
-                ctr.set_button_down_trigger('circle', show_record_count_status) #then we are not using the circle button. hijack that to force a record count indication
-        else:
-            
+        if isinstance(ctr, JoystickController):
+            ctr.set_button_down_trigger('circle', show_record_count_status) #then we are not using the circle button. hijack that to force a record count indication
+        else:   
             show_record_count_status()
 
-
+def enable_fpv(V):
     # Use the FPV preview, which will show the cropped image output, or the full frame.
-    if cfg.USE_FPV:
-        V.add(WebFpv(), inputs=['cam/image_array'], threaded=True)
+    V.add(WebFpv(), inputs=['cam/image_array'], threaded=True)
 
-    def load_model(kl, model_path):
-        start = time.time()
-        logger.info('loading model', model_path)
-        kl.load(model_path)
+def load_model(kl, model_path):
+    start = time.time()
+    logger.info('loading model', model_path)
+    kl.load(model_path)
+    logger.info('finished loading in %s sec.' % (str(time.time() - start)) )
+
+def load_weights(kl, weights_path):
+    start = time.time()
+    try:
+        logger.info('loading model weights', weights_path)
+        kl.model.load_weights(weights_path)
         logger.info('finished loading in %s sec.' % (str(time.time() - start)) )
+    except Exception as e:
+        logger.info(e)
+        logger.info('ERR>> problems loading weights', weights_path)
 
-    def load_weights(kl, weights_path):
-        start = time.time()
-        try:
-            logger.info('loading model weights', weights_path)
-            kl.model.load_weights(weights_path)
-            logger.info('finished loading in %s sec.' % (str(time.time() - start)) )
-        except Exception as e:
-            logger.info(e)
-            logger.info('ERR>> problems loading weights', weights_path)
+def load_model_json(kl, json_fnm):
+    start = time.time()
+    logger.info('loading model json', json_fnm)
+    from tensorflow.python import keras
+    try:
+        with open(json_fnm, 'r') as handle:
+            contents = handle.read()
+            kl.model = keras.models.model_from_json(contents)
+        logger.info('finished loading json in %s sec.' % (str(time.time() - start)) )
+    except Exception as e:
+        logger.info(e)
+        logger.info("ERR>> problems loading model json", json_fnm)
 
-    def load_model_json(kl, json_fnm):
-        start = time.time()
-        logger.info('loading model json', json_fnm)
-        from tensorflow.python import keras
-        try:
-            with open(json_fnm, 'r') as handle:
-                contents = handle.read()
-                kl.model = keras.models.model_from_json(contents)
-            logger.info('finished loading json in %s sec.' % (str(time.time() - start)) )
-        except Exception as e:
-            logger.info(e)
-            logger.info("ERR>> problems loading model json", json_fnm)
+def add_behavior_cloning_model(V, cfg, ctr):
+    # If we have a model, create an appropriate Keras part
+    model_path = cfg.BEHAVIOR_CLONE_MODEL_PATH
+    model_type = cfg.BEHAVIOR_CLONE_MODEL_TYPE
+    kl = dk.utils.get_model_by_type(model_type, cfg)
+    model_reload_cb = None
+    if '.h5' in model_path or '.trt' in model_path or '.tflite' in \
+            model_path or '.savedmodel' in model_path or '.pth':
+        # load the whole model with weigths, etc
+        load_model(kl, model_path)
+        def reload_model(filename):
+            load_model(kl, filename)
 
-    #
-    # load and configure model for inference
-    #
-    if model_path:
-        # If we have a model, create an appropriate Keras part
-        kl = dk.utils.get_model_by_type(model_type, cfg)
+        model_reload_cb = reload_model
 
-        #
-        # get callback function to reload the model
-        # for the configured model format
-        #
-        model_reload_cb = None
-
-        if '.h5' in model_path or '.trt' in model_path or '.tflite' in \
-                model_path or '.savedmodel' in model_path or '.pth':
-            # load the whole model with weigths, etc
-            load_model(kl, model_path)
-
-            def reload_model(filename):
-                load_model(kl, filename)
-
-            model_reload_cb = reload_model
-
-        elif '.json' in model_path:
-            # when we have a .json extension
-            # load the model from there and look for a matching
-            # .wts file with just weights
-            load_model_json(kl, model_path)
-            weights_path = model_path.replace('.json', '.weights')
+    elif '.json' in model_path:
+        # when we have a .json extension
+        # load the model from there and look for a matching
+        # .wts file with just weights
+        load_model_json(kl, model_path)
+        weights_path = model_path.replace('.json', '.weights')
+        load_weights(kl, weights_path)
+        
+        def reload_weights(filename):
+            weights_path = filename.replace('.json', '.weights')
             load_weights(kl, weights_path)
 
-            def reload_weights(filename):
-                weights_path = filename.replace('.json', '.weights')
-                load_weights(kl, weights_path)
+        model_reload_cb = reload_weights
 
-            model_reload_cb = reload_weights
+    else:
+        logger.info("ERR>> Unknown extension type on model file!!")
+        return
 
-        else:
-            logger.info("ERR>> Unknown extension type on model file!!")
-            return
+    # these parts will reload the model file, but only when ai is running
+    # so we don't interrupt user driving
+    V.add(FileWatcher(model_path), outputs=['modelfile/dirty'],
+            run_condition="ai_running")
+    V.add(DelayedTrigger(100), inputs=['modelfile/dirty'],
+            outputs=['modelfile/reload'], run_condition="ai_running")
+    V.add(TriggeredCallback(model_path, model_reload_cb),
+            inputs=["modelfile/reload"], run_condition="ai_running")
 
-        # this part will signal visual LED, if connected
-        V.add(FileWatcher(model_path, verbose=True),
-              outputs=['modelfile/modified'])
+    #
+    # collect inputs to model for inference
+    #
+    if cfg.TRAIN_BEHAVIORS:
+        bh = BehaviorPart(cfg.BEHAVIOR_LIST)
+        V.add(bh, outputs=['behavior/state', 'behavior/label', "behavior/one_hot_state_array"])
+        try:
+            ctr.set_button_down_trigger('L1', bh.increment_state)
+        except:
+            pass
 
-        # these parts will reload the model file, but only when ai is running
-        # so we don't interrupt user driving
-        V.add(FileWatcher(model_path), outputs=['modelfile/dirty'],
-              run_condition="ai_running")
-        V.add(DelayedTrigger(100), inputs=['modelfile/dirty'],
-              outputs=['modelfile/reload'], run_condition="ai_running")
-        V.add(TriggeredCallback(model_path, model_reload_cb),
-              inputs=["modelfile/reload"], run_condition="ai_running")
+        inputs = ['cam/image_array', "behavior/one_hot_state_array"]
 
-        #
-        # collect inputs to model for inference
-        #
-        if cfg.TRAIN_BEHAVIORS:
-            bh = BehaviorPart(cfg.BEHAVIOR_LIST)
-            V.add(bh, outputs=['behavior/state', 'behavior/label', "behavior/one_hot_state_array"])
-            try:
-                ctr.set_button_down_trigger('L1', bh.increment_state)
-            except:
-                pass
+    elif cfg.USE_LIDAR_IN_MODEL:
+        inputs = ['cam/image_array', 'lidar/dist_array']
 
-            inputs = ['cam/image_array', "behavior/one_hot_state_array"]
+    elif cfg.USE_ODOM_IN_MODEL:
+        inputs = ['cam/image_array', 'enc/speed']
 
-        elif cfg.USE_LIDAR:
-            inputs = ['cam/image_array', 'lidar/dist_array']
+    elif model_type == "imu":
+        assert cfg.HAVE_IMU, 'Missing imu parameter in config'
 
-        elif cfg.HAVE_ODOM:
-            inputs = ['cam/image_array', 'enc/speed']
+        class Vectorizer:
+            def run(self, *components):
+                return components
 
-        elif model_type == "imu":
-            assert cfg.HAVE_IMU, 'Missing imu parameter in config'
+        V.add(Vectorizer, inputs=['imu/acl_x', 'imu/acl_y', 'imu/acl_z',
+                                    'imu/gyr_x', 'imu/gyr_y', 'imu/gyr_z'],
+                outputs=['imu_array'])
 
-            class Vectorizer:
-                def run(self, *components):
-                    return components
+        inputs = ['cam/image_array', 'imu_array']
+    else:
+        inputs = ['cam/image_array']
 
-            V.add(Vectorizer, inputs=['imu/acl_x', 'imu/acl_y', 'imu/acl_z',
-                                      'imu/gyr_x', 'imu/gyr_y', 'imu/gyr_z'],
-                  outputs=['imu_array'])
+    #
+    # collect model inference outputs
+    #
+    outputs = ['pilot/angle', 'pilot/throttle']
 
-            inputs = ['cam/image_array', 'imu_array']
-        else:
-            inputs = ['cam/image_array']
+    if cfg.TRAIN_LOCALIZER:
+        outputs.append("pilot/loc")
 
-        #
-        # collect model inference outputs
-        #
-        outputs = ['pilot/angle', 'pilot/throttle']
+    #
+    # Add image transformations like crop or trapezoidal mask
+    #
+    if hasattr(cfg, 'TRANSFORMATIONS') and cfg.TRANSFORMATIONS:
+        from donkeycar.pipeline.augmentations import ImageAugmentation
+        V.add(ImageAugmentation(cfg, 'TRANSFORMATIONS'),
+                inputs=['cam/image_array'], outputs=['cam/image_array_trans'])
+        inputs = ['cam/image_array_trans'] + inputs[1:]
 
-        if cfg.TRAIN_LOCALIZER:
-            outputs.append("pilot/loc")
+    V.add(kl, inputs=inputs, outputs=outputs, run_condition='run_pilot')
 
-        #
-        # Add image transformations like crop or trapezoidal mask
-        #
-        if hasattr(cfg, 'TRANSFORMATIONS') and cfg.TRANSFORMATIONS:
-            from donkeycar.pipeline.augmentations import ImageAugmentation
-            V.add(ImageAugmentation(cfg, 'TRANSFORMATIONS'),
-                  inputs=['cam/image_array'], outputs=['cam/image_array_trans'])
-            inputs = ['cam/image_array_trans'] + inputs[1:]
-
-        V.add(kl, inputs=inputs, outputs=outputs, run_condition='run_pilot')
-
+def add_autopilot(V, cfg, ctr):
     #
     # to give the car a boost when starting ai mode in a race.
     # This will also override the stop sign detector so that
@@ -491,33 +383,14 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     V.add(aiLauncher,
           inputs=['user/mode', 'pilot/throttle'],
           outputs=['pilot/throttle'])
-
-    # Choose what inputs should change the car.
-    class DriveMode:
-        def run(self, mode,
-                    user_angle, user_throttle,
-                    pilot_angle, pilot_throttle):
-            if mode == 'user':
-                return user_angle, user_throttle
-
-            elif mode == 'local_angle':
-                return pilot_angle if pilot_angle else 0.0, user_throttle
-
-            else:
-                return pilot_angle if pilot_angle else 0.0, \
-                       pilot_throttle * cfg.AI_THROTTLE_MULT \
-                           if pilot_throttle else 0.0
-
+    from donkeycar.parts.behavior import DriveMode
     V.add(DriveMode(),
           inputs=['user/mode', 'user/angle', 'user/throttle',
                   'pilot/angle', 'pilot/throttle'],
           outputs=['angle', 'throttle'])
 
-
-
-    if (cfg.CONTROLLER_TYPE != "pigpio_rc") and (cfg.CONTROLLER_TYPE != "MM1"):
-        if isinstance(ctr, JoystickController):
-            ctr.set_button_down_trigger(cfg.AI_LAUNCH_ENABLE_BUTTON, aiLauncher.enable_ai_launch)
+    if isinstance(ctr, JoystickController):
+        ctr.set_button_down_trigger(cfg.AI_LAUNCH_ENABLE_BUTTON, aiLauncher.enable_ai_launch)
 
     class AiRunCondition:
         '''
@@ -543,22 +416,9 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     if cfg.RECORD_DURING_AI:
         V.add(AiRecordingCondition(), inputs=['user/mode', 'recording'], outputs=['recording'])
 
-    #
-    # Setup drivetrain
-    #
-    add_drivetrain(V, cfg)
-
-
-    # OLED setup
-    if cfg.USE_SSD1306_128_32:
-        from donkeycar.parts.oled import OLEDPart
-        auto_record_on_throttle = cfg.USE_JOYSTICK_AS_DEFAULT and cfg.AUTO_RECORD_ON_THROTTLE
-        oled_part = OLEDPart(cfg.SSD1306_128_32_I2C_ROTATION, cfg.SSD1306_RESOLUTION, auto_record_on_throttle)
-        V.add(oled_part, inputs=['recording', 'tub/num_records', 'user/mode'], outputs=[], threaded=True)
-
+def add_tub_writer(V, cfg):
     # add tub to save data
-
-    if cfg.USE_LIDAR:
+    if cfg.HAVE_LIDAR:
         inputs = ['cam/image_array', 'lidar/dist_array', 'user/angle', 'user/throttle', 'user/mode']
         types = ['image_array', 'nparray','float', 'float', 'str']
     else:
@@ -605,22 +465,82 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     meta += getattr(cfg, 'METADATA', [])
     tub_writer = TubWriter(tub_path, inputs=inputs, types=types, metadata=meta)
     V.add(tub_writer, inputs=inputs, outputs=["tub/num_records"], run_condition='recording')
+    return inputs, types, tub_writer
+#
+# Drive train setup
+#
+def add_drivetrain(V, cfg):
+    logger.info("cfg.DRIVE_TRAIN_TYPE %s"%cfg.DRIVE_TRAIN_TYPE)
+    if cfg.DRIVE_TRAIN_TYPE == "MOCK":
+        return
+    elif cfg.DRIVE_TRAIN_TYPE == "VESC":
+        from donkeycar.parts.actuator import VESC
+        logger.info("Creating VESC at port {}".format(cfg.VESC_SERIAL_PORT))
+        if cfg.HAVE_IMU and cfg.IMU_TYPE == "VESC":
+            vesc = VESC(cfg.VESC_SERIAL_PORT,
+                        cfg.VESC_MAX_SPEED_PERCENT,
+                        cfg.VESC_HAS_SENSOR,
+                        cfg.VESC_START_HEARTBEAT,
+                        cfg.VESC_BAUDRATE,
+                        cfg.VESC_TIMEOUT,
+                        cfg.VESC_STEERING_SCALE,
+                        cfg.VESC_STEERING_OFFSET
+                    )
+        elif cfg.HAVE_ODOM and cfg.ODOM_TYPE == "VESC":
+            pass
+        V.add(vesc, inputs=['angle', 'throttle'])
+    else:
+        logger.info("This Drive Train Type is not yet supported in this template")
 
-    # Telemetry (we add the same metrics added to the TubHandler
+def drive(cfg):
+    V = dk.Vehicle()
+    logger.info(f'PID: {os.getpid()}')
+    #Initialize car
+    V = dk.vehicle.Vehicle()
+
+    #Initialize logging before anything else to allow console logging
+    if cfg.HAVE_CONSOLE_LOGGING:
+        enable_logging(cfg)
+    if cfg.DONKEY_GYM:
+        add_simulator(V, cfg)
+    else:
+        if cfg.HAVE_ODOM:
+            # add odometry
+            add_odometry(V, cfg)
+        if cfg.HAVE_CAMERA:
+            # setup primary camera
+            add_camera(V, cfg)
+        if cfg.HAVE_LIDAR:
+            # add lidar
+            add_lidar(V, cfg)
+        if cfg.HAVE_IMU:
+            # add IMU
+            add_imu(V, cfg)
+    ctr, has_input_controller = add_user_controller(V, cfg)
+    add_web_buttons(V)
+    add_throttle_reverse(V)
+    add_pilot_condition(V)
+    add_record_tracker(V, cfg, ctr)
+    if cfg.DRIVE_TYPE == "behavior_cloning":
+        add_behavior_cloning_model(V, cfg, ctr)
+    elif cfg.DRIVE_TYPE == "gps_follow":
+        pass
+    else:
+        logger.info("Unsupported drive type passed")
+    add_autopilot(V, cfg, ctr)
+    inputs, types, tub_writer = add_tub_writer(V, cfg)
     if cfg.HAVE_MQTT_TELEMETRY:
-        from donkeycar.parts.telemetry import MqttTelemetry
-        tel = MqttTelemetry(cfg)
-        telem_inputs, _ = tel.add_step_inputs(inputs, types)
-        V.add(tel, inputs=telem_inputs, outputs=["tub/queue_size"], threaded=True)
-
-    if cfg.PUB_CAMERA_IMAGES:
-        from donkeycar.parts.network import TCPServeValue
-        from donkeycar.parts.image import ImgArrToJpg
-        pub = TCPServeValue("camera")
-        V.add(ImgArrToJpg(), inputs=['cam/image_array'], outputs=['jpg/bin'])
-        V.add(pub, inputs=['jpg/bin'])
-
-
+        enable_telemetry(V, cfg, inputs, types)
+    if not cfg.DONKEY_GYM:
+        if cfg.HAVE_DRIVETRAIN:
+            add_drivetrain(V, cfg)
+    if cfg.USE_FPV:
+        enable_fpv(V)
+    if cfg.HAVE_FPS_COUNTER:
+        # enable FPS counter
+        enable_fps(V, cfg)
+    if cfg.HAVE_PERFMON:
+        enable_perfmon(V, cfg)
     if cfg.DONKEY_GYM:
         logger.info("You can now go to http://localhost:%d to drive your car." % cfg.WEB_CONTROL_PORT)
     else:
@@ -633,7 +553,8 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
 
     # run the vehicle
     V.start(rate_hz=cfg.DRIVE_LOOP_HZ, max_loop_count=cfg.MAX_LOOPS)
-
+        
+        
 
 if __name__ == '__main__':
     args = docopt(__doc__)

@@ -44,8 +44,24 @@ class BehaviorPart(object):
         pass
 
 class PilotCondition:
-        def run(self, mode):
-            if mode == 'user':
-                return False
-            else:
-                return True
+    def run(self, mode):
+        if mode == 'user':
+            return False
+        else:
+            return True
+
+# Choose what inputs should change the car.
+class DriveMode:
+    def __init__(self, ai_throttle_mult):
+        self.ai_throttle_mult = ai_throttle_mult
+    def run(self, mode,
+            user_angle, user_throttle,
+            pilot_angle, pilot_throttle):
+        if mode == 'user':
+            return user_angle, user_throttle
+        elif mode == 'local_angle':
+            return pilot_angle if pilot_angle else 0.0, user_throttle
+        else:
+            return pilot_angle if pilot_angle else 0.0, \
+                    pilot_throttle * self.ai_throttle_mult \
+                        if pilot_throttle else 0.0

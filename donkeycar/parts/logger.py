@@ -41,6 +41,7 @@ class RecordTracker:
             self.logger = logger
             self.rec_count_alert = rec_count_alert
             self.rec_count_alert_cyc = rec_count_alert_cyc
+            self.record_alert_color_arr = record_alert_color_arr
 
         def run(self, num_records):
             if num_records is None:
@@ -66,7 +67,7 @@ class RecordTracker:
 
         def get_record_alert_color(self, num_records):
             col = (0, 0, 0)
-            for count, color in cfg.RECORD_ALERT_COLOR_ARR:
+            for count, color in self.record_alert_color_arr:
                 if num_records >= count:
                     col = color
             return col
