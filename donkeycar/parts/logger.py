@@ -46,12 +46,11 @@ class RecordTracker:
     def run(self, num_records):
         if num_records is None:
             return 0
-        num_records = num_records[0]
         if self.last_num_rec_print != num_records or self.force_alert:
             self.last_num_rec_print = num_records
 
             if num_records % 10 == 0:
-                self.logger.info("recorded", num_records, "records")
+                self.logger.info(f"recorded {num_records} records")
 
             if num_records % self.rec_count_alert == 0 or self.force_alert:
                 self.dur_alert = num_records // self.rec_count_alert * self.rec_count_alert_cyc
