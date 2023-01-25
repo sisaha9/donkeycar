@@ -278,6 +278,8 @@ def load_model_json(kl, json_fnm):
 def add_behavior_cloning_model(V, cfg, ctr):
     # If we have a model, create an appropriate Keras part
     model_path = cfg.BEHAVIOR_CLONE_MODEL_PATH
+    if model_path is None:
+        return
     model_type = cfg.BEHAVIOR_CLONE_MODEL_TYPE
     kl = dk.utils.get_model_by_type(model_type, cfg)
     model_reload_cb = None
