@@ -217,10 +217,10 @@ SIM_HOST = "127.0.0.1"              # when racing on virtual-race-league use hos
 SIM_ARTIFICIAL_LATENCY = 0          # this is the millisecond latency in controls. Can use useful in emulating the delay when useing a remote server. values of 100 to 400 probably reasonable.
 
 # Save info from Simulator (pln)
-SIM_RECORD_LOCATION = False
-SIM_RECORD_GYROACCEL= False
-SIM_RECORD_VELOCITY = False
-SIM_RECORD_LIDAR = False
+SIM_RECORD_LOCATION = True
+SIM_RECORD_GYROACCEL= True
+SIM_RECORD_VELOCITY = True
+SIM_RECORD_LIDAR = True
 
 #When racing, to give the ai a boost, configure these values.
 AI_LAUNCH_DURATION = 0.0            # the ai will output throttle for this many seconds
@@ -270,6 +270,8 @@ CAMERA_TYPE = "None"
 IMAGE_W = 160
 IMAGE_H = 120
 IMAGE_DEPTH = 3 
+
+HAVE_GPS = False
 
 DRIVE_TYPE = "gps_follow"
 #
