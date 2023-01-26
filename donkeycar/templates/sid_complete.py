@@ -31,6 +31,9 @@ from donkeycar.parts.transform import TriggeredCallback, DelayedTrigger
 from donkeycar.parts.tub_v2 import TubWriter
 from donkeycar.parts.datastore import TubHandler
 from donkeycar.parts.controller import LocalWebController, WebFpv, JoystickController
+from donkeycar.parts.path import CsvThrottlePath, PathPlot, CTE, PID_Pilot, \
+    PlotCircle, PImage, OriginOffset
+from donkeycar.parts.transform import PIDController
 from donkeycar.parts.throttle_filter import ThrottleFilter
 from donkeycar.parts.behavior import BehaviorPart
 from donkeycar.parts.file_watcher import FileWatcher
@@ -133,6 +136,34 @@ def add_imu(V, cfg):
         logger.info("SPARKFUN 9DOF IMU to be supported")
     else:
         logger.info("This IMU is not yet supported in this template")
+
+def add_gps(V, cfg):
+    if cfg.GPS_TYPE == "P1 Fusion Engine":
+        pass
+    else:
+        from donkeycar.parts.serial_port import SerialPort, SerialLineReader
+        from donkeycar.parts.gps import GpsNmeaPositions, GpsLatestPosition, GpsPlayer
+        from donkeycar.parts.pipe import Pipe
+        from donkeycar.parts.text_writer import CsvLogger
+
+        #
+        # parts to
+        # - read nmea lines from serial port
+        # - OR play from recorded file
+        # - convert nmea lines to positions
+        # - retrieve the most recent position
+        #
+        serial_port = SerialPort(cfg.GPS_SERIAL, cfg.GPS_SERIAL_BAUDRATE)
+        nmea_reader = SerialLineReader(serial_port)
+        V.add(nmea_reader, outputs=['gps/nmea'], threaded=True)
+
+        gps_positions = GpsNmeaPositions(debug=cfg.GPS_DEBUG)
+        V.add(gps_positions, inputs=['gps/nmea'], outputs=['gps/positions'])
+        gps_latest_position = GpsLatestPosition(debug=cfg.GPS_DEBUG)
+        V.add(gps_latest_position, inputs=['gps/positions'], outputs=['gps/timestamp', 'gps/utm/longitude', 'gps/utm/latitude'])
+
+        # rename gps utm position to pose values
+        V.add(Pipe(), inputs=['gps/utm/longitude', 'gps/utm/latitude'], outputs=['pos/x', 'pos/y'])
 
 def enable_fps(V, cfg):
     from donkeycar.parts.fps import FrequencyLogger
@@ -519,23 +550,251 @@ def drive(cfg):
         if cfg.HAVE_IMU:
             # add IMU
             add_imu(V, cfg)
+        if cfg.HAVE_GPS:
+            # add GPS
+            add_gps(V, cfg)
     ctr, has_input_controller = add_user_controller(V, cfg)
-    add_web_buttons(V)
-    add_throttle_reverse(V)
-    add_pilot_condition(V)
-    add_record_tracker(V, cfg, ctr)
     if cfg.DRIVE_TYPE == "behavior_cloning":
+        add_web_buttons(V)
+        add_throttle_reverse(V)
+        add_pilot_condition(V)
+        add_record_tracker(V, cfg, ctr)
         add_behavior_cloning_model(V, cfg, ctr)
+        add_autopilot(V, cfg, ctr)
+        inputs, types, tub_writer = add_tub_writer(V, cfg)
+        if cfg.HAVE_MQTT_TELEMETRY:
+            enable_telemetry(V, cfg, inputs, types)
     elif cfg.DRIVE_TYPE == "gps_follow":
-        pass
+        #
+        # explode the web buttons into their own key/values in memory
+        #
+        V.add(ExplodeDict(V.mem, "web/"), inputs=['web/buttons'])
+
+        #
+        # This part will reset the car back to the origin. You must put the car in the known origin
+        # and push the cfg.RESET_ORIGIN_BTN on your controller. This will allow you to induce an offset
+        # in the mapping.
+        #
+        origin_reset = OriginOffset(cfg.PATH_DEBUG)
+        V.add(origin_reset, inputs=['pos/x', 'pos/y', 'cte/closest_pt'], outputs=['pos/x', 'pos/y', 'cte/closest_pt'])
+
+
+        class UserCondition:
+            def run(self, mode):
+                if mode == 'user':
+                    return True
+                else:
+                    return False
+
+        V.add(UserCondition(), inputs=['user/mode'], outputs=['run_user'])
+
+        from donkeycar.parts.behavior import PilotCondition
+
+        V.add(PilotCondition(), inputs=['user/mode'], outputs=['run_pilot'])
+
+        # This is the path object. It will record a path when distance changes and it travels
+        # at least cfg.PATH_MIN_DIST meters. Except when we are in follow mode, see below...
+        path = CsvThrottlePath(min_dist=cfg.PATH_MIN_DIST)
+        V.add(path, inputs=['recording', 'pos/x', 'pos/y', 'user/throttle'], outputs=['path', 'throttles'])
+
+        def save_path():
+            if path.length() > 0:
+                if path.save(cfg.PATH_FILENAME):
+                    print("That path was saved to ", cfg.PATH_FILENAME)
+                else:
+                    print("The path could NOT be saved; check the PATH_FILENAME in myconfig.py to make sure it is a legal path")
+            else:
+                print("There is no path to save; try recording the path.")
+
+        def load_path():
+            if os.path.exists(cfg.PATH_FILENAME) and path.load(cfg.PATH_FILENAME):
+                print("The path was loaded was loaded from ", cfg.PATH_FILENAME)
+
+        def erase_path():
+            origin_reset.reset_origin()
+            if path.reset():
+                print("The origin and the path were reset; you are ready to record a new path.")
+            else:
+                print("The origin was reset; you are ready to record a new path.")
+
+        def reset_origin():
+            """
+            Reset effective pose to (0, 0)
+            """
+            origin_reset.reset_origin()
+            print("The origin was reset to the current position.")
+
+
+        # When a path is loaded, we will be in follow mode. We will not record.
+        if os.path.exists(cfg.PATH_FILENAME):
+            load_path()
+
+        # Here's an image we can map to.
+        img = PImage(clear_each_frame=True)
+        V.add(img, outputs=['map/image'])
+
+        # This PathPlot will draw path on the image
+
+        plot = PathPlot(scale=cfg.PATH_SCALE, offset=cfg.PATH_OFFSET)
+        V.add(plot, inputs=['map/image', 'path'], outputs=['map/image'])
+
+        # This will use path and current position to output cross track error
+        cte = CTE(look_ahead=cfg.PATH_LOOK_AHEAD, look_behind=cfg.PATH_LOOK_BEHIND, num_pts=cfg.PATH_SEARCH_LENGTH)
+        V.add(cte, inputs=['path', 'pos/x', 'pos/y', 'cte/closest_pt'], outputs=['cte/error', 'cte/closest_pt'], run_condition='run_pilot')
+
+        # This will use the cross track error and PID constants to try to steer back towards the path.
+        pid = PIDController(p=cfg.PID_P, i=cfg.PID_I, d=cfg.PID_D)
+        pilot = PID_Pilot(pid, cfg.PID_THROTTLE, cfg.USE_CONSTANT_THROTTLE, min_throttle=cfg.PID_THROTTLE)
+        V.add(pilot, inputs=['cte/error', 'throttles', 'cte/closest_pt'], outputs=['pilot/angle', 'pilot/throttle'], run_condition="run_pilot")
+
+        def dec_pid_d():
+            pid.Kd -= cfg.PID_D_DELTA
+            logging.info("pid: d- %f" % pid.Kd)
+
+        def inc_pid_d():
+            pid.Kd += cfg.PID_D_DELTA
+            logging.info("pid: d+ %f" % pid.Kd)
+
+        def dec_pid_p():
+            pid.Kp -= cfg.PID_P_DELTA
+            logging.info("pid: p- %f" % pid.Kp)
+
+        def inc_pid_p():
+            pid.Kp += cfg.PID_P_DELTA
+            logging.info("pid: p+ %f" % pid.Kp)
+
+
+        class ToggleRecording:
+            def __init__(self, auto_record_on_throttle):
+                self.auto_record_on_throttle = auto_record_on_throttle
+                self.recording_latch:bool = None
+                self.toggle_latch:bool = False
+                self.last_recording = None
+
+            def set_recording(self, recording:bool):
+                self.recording_latch = recording
+
+            def toggle_recording(self):
+                self.toggle_latch = True
+
+            def run(self, mode:str, recording:bool):
+                recording_in = recording
+                if recording_in != self.last_recording:
+                    logging.info(f"Recording Change = {recording_in}")
+
+                if self.toggle_latch:
+                    if self.auto_record_on_throttle:
+                        logger.info('auto record on throttle is enabled; ignoring toggle of manual mode.')
+                    else:
+                        recording = not self.last_recording
+                    self.toggle_latch = False
+
+                if self.recording_latch is not None:
+                    recording = self.recording_latch
+                    self.recording_latch = None
+
+                if recording and mode != 'user':
+                    logging.info("Ignoring recording in auto-pilot mode")
+                    recording = False
+
+                if self.last_recording != recording:
+                    logging.info(f"Setting Recording = {recording}")
+
+                self.last_recording = recording
+
+                return recording
+
+
+        recording_control = ToggleRecording(cfg.AUTO_RECORD_ON_THROTTLE)
+        V.add(recording_control, inputs=['user/mode', "recording"], outputs=["recording"])
+
+
+        #
+        # Add buttons for handling various user actions
+        # The button names are in configuration.
+        # They may refer to game controller (joystick) buttons OR web ui buttons
+        #
+        # There are 5 programmable webui buttons, "web/w1" to "web/w5"
+        # adding a button handler for a webui button
+        # is just adding a part with a run_condition set to
+        # the button's name, so it runs when button is pressed.
+        #
+        have_joystick = ctr is not None and isinstance(ctr, JoystickController)
+
+        # Here's a trigger to save the path. Complete one circuit of your course, when you
+        # have exactly looped, or just shy of the loop, then save the path and shutdown
+        # this process. Restart and the path will be loaded.
+        if cfg.SAVE_PATH_BTN:
+            print(f"Save path button is {cfg.SAVE_PATH_BTN}")
+            if cfg.SAVE_PATH_BTN.startswith("web/w"):
+                V.add(Lambda(lambda: save_path()), run_condition=cfg.SAVE_PATH_BTN)
+            elif have_joystick:
+                ctr.set_button_down_trigger(cfg.SAVE_PATH_BTN, save_path)
+
+        # allow controller to (re)load the path
+        if cfg.LOAD_PATH_BTN:
+            print(f"Load path button is {cfg.LOAD_PATH_BTN}")
+            if cfg.LOAD_PATH_BTN.startswith("web/w"):
+                V.add(Lambda(lambda: load_path()), run_condition=cfg.LOAD_PATH_BTN)
+            elif have_joystick:
+                ctr.set_button_down_trigger(cfg.LOAD_PATH_BTN, load_path)
+
+        # Here's a trigger to erase a previously saved path.
+        # This erases the path in memory; it does NOT erase any saved path file
+        if cfg.ERASE_PATH_BTN:
+            print(f"Erase path button is {cfg.ERASE_PATH_BTN}")
+            if cfg.ERASE_PATH_BTN.startswith("web/w"):
+                V.add(Lambda(lambda: erase_path()), run_condition=cfg.ERASE_PATH_BTN)
+            elif have_joystick:
+                ctr.set_button_down_trigger(cfg.ERASE_PATH_BTN, erase_path)
+
+        # Here's a trigger to reset the origin based on the current position
+        if cfg.RESET_ORIGIN_BTN:
+            print(f"Reset origin button is {cfg.RESET_ORIGIN_BTN}")
+            if cfg.RESET_ORIGIN_BTN.startswith("web/w"):
+                V.add(Lambda(lambda: reset_origin()), run_condition=cfg.RESET_ORIGIN_BTN)
+            elif have_joystick:
+                ctr.set_button_down_trigger(cfg.RESET_ORIGIN_BTN, reset_origin)
+
+        # button to toggle recording
+        if cfg.TOGGLE_RECORDING_BTN:
+            print(f"Toggle recording button is {cfg.TOGGLE_RECORDING_BTN}")
+            if cfg.TOGGLE_RECORDING_BTN.startswith("web/w"):
+                V.add(Lambda(lambda: recording_control.toggle_recording()), run_condition=cfg.TOGGLE_RECORDING_BTN)
+            elif have_joystick:
+                ctr.set_button_down_trigger(cfg.TOGGLE_RECORDING_BTN, recording_control.toggle_recording)
+
+
+        #Choose what inputs should change the car.
+        class DriveMode:
+            def run(self, mode, 
+                    user_angle, user_throttle,
+                    pilot_angle, pilot_throttle):
+                if mode == 'user':
+                    return user_angle, user_throttle
+                elif mode == 'local_angle':
+                    return pilot_angle, user_throttle
+                else:
+                    return pilot_angle, pilot_throttle
+
+        V.add(DriveMode(), 
+            inputs=['user/mode', 'user/angle', 'user/throttle',
+                    'pilot/angle', 'pilot/throttle'], 
+            outputs=['angle', 'throttle'])
+
+        #
+        # draw a map image as the vehicle moves
+        #
+        loc_plot = PlotCircle(scale=cfg.PATH_SCALE, offset=cfg.PATH_OFFSET, color = "blue")
+        V.add(loc_plot, inputs=['map/image', 'pos/x', 'pos/y'], outputs=['map/image'], run_condition='run_pilot')
+
+        loc_plot = PlotCircle(scale=cfg.PATH_SCALE, offset=cfg.PATH_OFFSET, color = "green")
+        V.add(loc_plot, inputs=['map/image', 'pos/x', 'pos/y'], outputs=['map/image'], run_condition='run_user')
     else:
         logger.info("Unsupported drive type passed")
-    add_autopilot(V, cfg, ctr)
-    inputs, types, tub_writer = add_tub_writer(V, cfg)
-    if cfg.HAVE_MQTT_TELEMETRY:
-        enable_telemetry(V, cfg, inputs, types)
-    if not cfg.DONKEY_GYM:
-        if cfg.HAVE_DRIVETRAIN:
+    
+    
+    if not cfg.DONKEY_GYM and cfg.HAVE_DRIVETRAIN:
             add_drivetrain(V, cfg)
     if cfg.USE_FPV:
         enable_fpv(V)
@@ -551,7 +810,8 @@ def drive(cfg):
     if has_input_controller:
         logger.info("You can now move your controller to drive your car.")
         if isinstance(ctr, JoystickController):
-            ctr.set_tub(tub_writer.tub)
+            if cfg.DRIVE_TYPE == "behavior_cloning":
+                ctr.set_tub(tub_writer.tub)
             ctr.print_controls()
 
     # run the vehicle

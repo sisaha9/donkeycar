@@ -271,4 +271,33 @@ IMAGE_W = 160
 IMAGE_H = 120
 IMAGE_DEPTH = 3 
 
-DRIVE_TYPE = "behavior_cloning"
+DRIVE_TYPE = "gps_follow"
+#
+# PATH FOLLOWING
+#
+PATH_FILENAME = "donkey_path.csv"   # the path will be saved to this filename as comma separated x,y values
+PATH_DEBUG = True                   # True to log x,y position
+PATH_SCALE = 10.0                   # the path display will be scaled by this factor in the web page
+PATH_OFFSET = (255, 255)            # 255, 255 is the center of the map. This offset controls where the origin is displayed.
+PATH_MIN_DIST = 0.2                 # after travelling this distance (m), save a path point
+PATH_SEARCH_LENGTH = None           # number of points to search for closest point, None to search entire path
+PATH_LOOK_AHEAD = 1                 # number of points ahead of the closest point to include in cte track
+PATH_LOOK_BEHIND = 1                # number of points behind the closest point to include in cte track   
+PID_P = -0.5                        # proportional mult for PID path follower
+PID_I = 0.000                       # integral mult for PID path follower
+PID_D = -0.3                        # differential mult for PID path follower
+PID_THROTTLE = 0.50                 # constant throttle value during path following
+PID_D_DELTA = 0.25                  # amount the inc/dec function will change the D value
+PID_P_DELTA = 0.25                  # amount the inc/dec function will change the P value
+USE_CONSTANT_THROTTLE = False
+#
+# Assign path follow functions to buttons.
+# You can use game pad buttons OR web ui buttons ('web/w1' to 'web/w5')
+# Use None use the game controller default
+# NOTE: the cross button is already reserved for the emergency stop
+#
+SAVE_PATH_BTN = "web/w1"        # button to save path
+LOAD_PATH_BTN = "web/w2"             # button (re)load path
+RESET_ORIGIN_BTN = "web/w3"     # button to press to move car back to origin
+ERASE_PATH_BTN = "web/w4"     # button to erase path
+TOGGLE_RECORDING_BTN = "web/w5" # button to toggle recording mode
