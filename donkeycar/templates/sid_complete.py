@@ -248,32 +248,32 @@ def enable_fpv(V):
 
 def load_model(kl, model_path):
     start = time.time()
-    logger.info('loading model', model_path)
+    logger.info(f'loading model {model_path}')
     kl.load(model_path)
-    logger.info('finished loading in %s sec.' % (str(time.time() - start)) )
+    logger.info(f'finished loading in {(str(time.time() - start))} sec.')
 
 def load_weights(kl, weights_path):
     start = time.time()
     try:
-        logger.info('loading model weights', weights_path)
+        logger.info(f'loading model weights {weights_path}')
         kl.model.load_weights(weights_path)
-        logger.info('finished loading in %s sec.' % (str(time.time() - start)) )
+        logger.info(f'finished loading in {(str(time.time() - start))} sec.')
     except Exception as e:
         logger.info(e)
-        logger.info('ERR>> problems loading weights', weights_path)
+        logger.info(f'ERR>> problems loading weights {weights_path}')
 
 def load_model_json(kl, json_fnm):
     start = time.time()
-    logger.info('loading model json', json_fnm)
+    logger.info(f'loading model json {json_fnm}')
     from tensorflow.python import keras
     try:
         with open(json_fnm, 'r') as handle:
             contents = handle.read()
             kl.model = keras.models.model_from_json(contents)
-        logger.info('finished loading json in %s sec.' % (str(time.time() - start)) )
+        logger.info(f'finished loading json in {(str(time.time() - start))} sec.')
     except Exception as e:
         logger.info(e)
-        logger.info("ERR>> problems loading model json", json_fnm)
+        logger.info(f"ERR>> problems loading model json {json_fnm}")
 
 def add_behavior_cloning_model(V, cfg, ctr):
     # If we have a model, create an appropriate Keras part
@@ -545,9 +545,9 @@ def drive(cfg):
     if cfg.HAVE_PERFMON:
         enable_perfmon(V, cfg)
     if cfg.DONKEY_GYM:
-        logger.info("You can now go to http://localhost:%d to drive your car." % cfg.WEB_CONTROL_PORT)
+        logger.info(f"You can now go to http://localhost:{cfg.WEB_CONTROL_PORT} to drive your car.")
     else:
-        logger.info("You can now go to <your hostname.local>:%d to drive your car." % cfg.WEB_CONTROL_PORT)
+        logger.info(f"You can now go to <your hostname.local>:{cfg.WEB_CONTROL_PORT} to drive your car.")
     if has_input_controller:
         logger.info("You can now move your controller to drive your car.")
         if isinstance(ctr, JoystickController):

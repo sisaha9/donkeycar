@@ -249,7 +249,7 @@ FPS_DEBUG_INTERVAL = 10    # the interval in seconds for printing the frequency 
 
 # Behavior cloning model
 BEHAVIOR_CLONE_MODEL_TYPE = 'linear'
-BEHAVIOR_CLONE_MODEL_PATH = None
+BEHAVIOR_CLONE_MODEL_PATH = None # "models/20aug20_sim_160x120_20.h5"
 #BEHAVIORS
 #When training the Behavioral Neural Network model, make a list of the behaviors,
 #Set the TRAIN_BEHAVIORS = True, and use the BEHAVIOR_LED_COLORS to give each behavior a color
