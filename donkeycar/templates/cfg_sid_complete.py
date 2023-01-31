@@ -118,7 +118,7 @@ WEB_INIT_MODE = "user"              # which control mode to start in. one of use
 HAVE_JOYSTICK = False      #when starting the manage.py, when True, will not require a --js option to use the joystick
 JOYSTICK_MAX_THROTTLE = 0.5         #this scalar is multiplied with the -1 to 1 throttle value to limit the maximum throttle. This can help if you drop the controller or just don't need the full speed available.
 JOYSTICK_STEERING_SCALE = 1.0       #some people want a steering that is less sensitve. This scalar is multiplied with the steering -1 to 1. It can be negative to reverse dir.
-AUTO_RECORD_ON_THROTTLE = True      #if true, we will record whenever throttle is not zero. if false, you must manually toggle recording with some other trigger. Usually circle button on joystick.
+AUTO_RECORD_ON_THROTTLE = False      #if true, we will record whenever throttle is not zero. if false, you must manually toggle recording with some other trigger. Usually circle button on joystick.
 CONTROLLER_TYPE = 'xbox'            #(ps3|ps4|xbox|pigpio_rc|nimbus|wiiu|F710|rc3|MM1|custom) custom will run the my_joystick.py controller written by the `donkey createjs` command
 USE_NETWORKED_JS = False            #should we listen for remote joystick control over the network?
 NETWORK_JS_SERVER_IP = None         #when listening for network joystick control, which ip is serving this information
@@ -180,9 +180,9 @@ RECORD_ALERT_COLOR_ARR = [ (0, (1, 1, 1)),
 #then extract that and modify DONKEY_SIM_PATH.
 DONKEY_GYM = True
 DONKEY_SIM_PATH = "remote" #"/home/tkramer/projects/sdsandbox/sdsim/build/DonkeySimLinux/donkey_sim.x86_64" when racing on virtual-race-league use "remote", or user "remote" when you want to start the sim manually first.
-DONKEY_GYM_ENV_NAME = "donkey-avc-sparkfun-v0" # ("donkey-generated-track-v0"|"donkey-generated-roads-v0"|"donkey-warehouse-v0"|"donkey-avc-sparkfun-v0")
-GYM_CONF = { "body_style" : "car01", "body_rgb" : (255, 205, 0), "car_name" : "UCSD-DSC-178-YourName", "font_size" : 30} # body style(donkey|bare|car01) body rgb 0-255
-GYM_CONF["racer_name"] = "UCSD-DSC-178-YourName"
+DONKEY_GYM_ENV_NAME = "donkey-warren-track-v0" # ("donkey-generated-track-v0"|"donkey-generated-roads-v0"|"donkey-warehouse-v0"|"donkey-avc-sparkfun-v0")
+GYM_CONF = { "body_style" : "car01", "body_rgb" : (255, 205, 0), "car_name" : "UCSD-DSC-178-Sid", "font_size" : 30} # body style(donkey|bare|car01) body rgb 0-255
+GYM_CONF["racer_name"] = "UCSD-DSC-178-Sid"
 GYM_CONF["country"] = "USA"
 GYM_CONF["bio"] = "Representing HDSI"
 GYM_CONF["cam_config"] = {
@@ -231,18 +231,6 @@ AI_LAUNCH_KEEP_ENABLED = False      # when False ( default) you will need to hit
 #Scale the output of the throttle of the ai pilot for all model types.
 AI_THROTTLE_MULT = 1.0              # this multiplier will scale every throttle value for all output from NN models
 
-#Path following
-PATH_FILENAME = "donkey_path.pkl"   # the path will be saved to this filename
-PATH_SCALE = 5.0                    # the path display will be scaled by this factor in the web page
-PATH_OFFSET = (0, 0)                # 255, 255 is the center of the map. This offset controls where the origin is displayed.
-PATH_MIN_DIST = 0.3                 # after travelling this distance (m), save a path point
-PID_P = -10.0                       # proportional mult for PID path follower
-PID_I = 0.000                       # integral mult for PID path follower
-PID_D = -0.2                        # differential mult for PID path follower
-PID_THROTTLE = 0.2                  # constant throttle value during path following
-SAVE_PATH_BTN = "cross"             # joystick button to save path
-RESET_ORIGIN_BTN = "triangle"       # joystick button to press to move car back to origin
-
 # FPS counter# FPS counter
 HAVE_FPS_COUNTER = False
 FPS_DEBUG_INTERVAL = 10    # the interval in seconds for printing the frequency info into the shell
@@ -277,18 +265,18 @@ DRIVE_TYPE = "gps_follow"
 #
 # PATH FOLLOWING
 #
-PATH_FILENAME = "donkey_path.csv"   # the path will be saved to this filename as comma separated x,y values
-PATH_DEBUG = True                   # True to log x,y position
+PATH_FILENAME = "donkey_path_speedds.csv"   # the path will be saved to this filename as comma separated x,y values
+PATH_DEBUG = False                   # True to log x,y position
 PATH_SCALE = 10.0                   # the path display will be scaled by this factor in the web page
 PATH_OFFSET = (255, 255)            # 255, 255 is the center of the map. This offset controls where the origin is displayed.
 PATH_MIN_DIST = 0.2                 # after travelling this distance (m), save a path point
-PATH_SEARCH_LENGTH = None           # number of points to search for closest point, None to search entire path
+PATH_SEARCH_LENGTH = 100           # number of points to search for closest point, None to search entire path
 PATH_LOOK_AHEAD = 1                 # number of points ahead of the closest point to include in cte track
 PATH_LOOK_BEHIND = 1                # number of points behind the closest point to include in cte track   
-PID_P = -0.5                        # proportional mult for PID path follower
-PID_I = 0.000                       # integral mult for PID path follower
-PID_D = -0.3                        # differential mult for PID path follower
-PID_THROTTLE = 0.50                 # constant throttle value during path following
+PID_P = 0.35                        # proportional mult for PID path follower
+PID_I = 0.12                       # integral mult for PID path follower
+PID_D = 0.25                       # differential mult for PID path follower
+PID_THROTTLE = 0.1                 # constant throttle value during path following
 PID_D_DELTA = 0.25                  # amount the inc/dec function will change the D value
 PID_P_DELTA = 0.25                  # amount the inc/dec function will change the P value
 USE_CONSTANT_THROTTLE = False

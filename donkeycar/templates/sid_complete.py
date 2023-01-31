@@ -76,7 +76,7 @@ def add_simulator(V, cfg):
     outputs = ['cam/image_array']
 
     if cfg.SIM_RECORD_LOCATION:
-        outputs += ['pos/pos_x', 'pos/pos_y', 'pos/pos_z', 'pos/speed', 'pos/cte']
+        outputs += ['pos/x', 'pos/z', 'pos/y', 'pos/speed', 'pos/cte']
     if cfg.SIM_RECORD_GYROACCEL:
         outputs += ['gyro/gyro_x', 'gyro/gyro_y', 'gyro/gyro_z', 'accel/accel_x', 'accel/accel_y', 'accel/accel_z']
     if cfg.SIM_RECORD_VELOCITY:
@@ -480,7 +480,7 @@ def add_tub_writer(V, cfg):
     # rbx
     if cfg.DONKEY_GYM:
         if cfg.SIM_RECORD_LOCATION:
-            inputs += ['pos/pos_x', 'pos/pos_y', 'pos/pos_z', 'pos/speed', 'pos/cte']
+            inputs += ['pos/x', 'pos/y', 'pos/z', 'pos/speed', 'pos/cte']
             types  += ['float', 'float', 'float', 'float', 'float']
         if cfg.SIM_RECORD_GYROACCEL:
             inputs += ['gyro/gyro_x', 'gyro/gyro_y', 'gyro/gyro_z', 'accel/accel_x', 'accel/accel_y', 'accel/accel_z']

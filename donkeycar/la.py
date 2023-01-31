@@ -48,6 +48,8 @@ class Vec2(object):
         
     def normalize(self):
         m = self.mag()
+        if m == 0:
+            m += 1e-9
         self.scale(1.0 / m)
         return self
         
