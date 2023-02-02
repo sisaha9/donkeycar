@@ -395,12 +395,13 @@ class OAKDCamera(BaseCamera):
         import depthai as dai
         self.device = dai.Device()
         self.frame = None
-        self.res = dai.ColorCameraProperties.SensorResolution.THE_720_P
+        self.res_rgb = dai.ColorCameraProperties.SensorResolution.THE_720_P
+        self.res_mono = dai.MonoCameraProperties.SensorResolution.THE_720_P
         self.pipeline = dai.Pipeline()
         self.cam_rgb = self.pipeline.create(dai.node.ColorCamera)
         self.cam_rgb.setPreviewSize(image_w, image_h)
         self.cam_rgb.setInterleaved(False)
-        self.cam_rgb.setResolution(self.res)
+        self.cam_rgb.setResolution(self.res_rgb)
         self.cam_rgb.setBoardSocket(dai.CameraBoardSocket.RGB)
         self.cam_rgb.setFps(frame_rate)
         if with_stereo:
@@ -432,12 +433,12 @@ class OAKDCamera(BaseCamera):
             self.current_date = datetime.datetime.now()
         if with_stereo:
             self.left = self.pipeline.create(dai.node.MonoCamera)
-            self.left.setResolution(self.res)
+            self.left.setResolution(self.res_mono)
             self.left.setBoardSocket(dai.CameraBoardSocket.LEFT)
             self.left.setFps(frame_rate)
 
             self.right = self.pipeline.create(dai.node.MonoCamera)
-            self.right.setResolution(self.res)
+            self.right.setResolution(self.res_mono)
             self.right.setBoardSocket(dai.CameraBoardSocket.RIGHT)
             self.right.setFps(frame_rate)
 
