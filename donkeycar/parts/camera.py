@@ -424,7 +424,7 @@ class OAKDCamera(BaseCamera):
         if with_record:
             self.videoEnc = self.pipeline.create(dai.node.VideoEncoder)
             self.videoEnc.setDefaultProfilePreset(1, dai.VideoEncoderProperties.Profile.H265_MAIN)
-            self.cam_rgb.preview.link(self.videoEnc)
+            self.cam_rgb.preview.link(self.videoEnc.input)
             self.xout_vid = self.pipeline.create(dai.node.XLinkOut)
             self.xout_vid.setStreamName("record")
             self.videoEnc.bitstream.link(self.xout_vid.input)
