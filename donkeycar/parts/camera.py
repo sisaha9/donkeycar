@@ -422,6 +422,7 @@ class OAKDCamera(BaseCamera):
         self.imu_output = None
         self.frame_rate = frame_rate
         self.output_names = ["rgb"]
+
         if with_record:
             self.videoEnc = self.pipeline.create(dai.node.VideoEncoder)
             self.videoEnc.setDefaultProfilePreset(1, dai.VideoEncoderProperties.Profile.H265_MAIN)
@@ -477,14 +478,15 @@ class OAKDCamera(BaseCamera):
             msg = self.device.getOutputQueue(name).get()
             if msg is not None:
                 if name == "rgb":
-                    self.rgb_frame = cv2.cvtColor(msg.getFrame(), cv2.COLOR_BGR2RGB)
+                    self.rgb_frame = cv2.cvtColor(msg.getCvFrame(), cv2.COLOR_BGR2RGB)
                     cv2.imshow(self.rgb_frame, name)
                 elif name == "record":
                     with open(f'rgb_data_{self.current_date.strftime("%m_%d_%Y_%H_%M_%S")}.h265', 'wb') as recorded_data:
                         msg.getData().tofile(recorded_data)
                 elif name == "depth":
                     self.depth_frame = msg.getFrame()
-                    cv2.imshow(self.depth_frame, name)
+                    frame = cv2.applyColorMap((self.depth_frame * (255 / self.stereo.initialConfig.getMaxDisparity())).astype(np.uint8), cv2.COLORMAP_JET)
+                    cv2.imshow(frame, name)
                 elif name == "nn":
                     self.nn_output = msg.detections
                     print(self.nn_output)
