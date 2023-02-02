@@ -458,7 +458,7 @@ class OAKDCamera(BaseCamera):
             self.cam_rgb.preview.link(self.detection_nn.input)
             self.xout_nn = self.pipeline.create(dai.node.XLinkOut)
             self.xout_nn.setStreamName("nn")
-            self.detection_nn.preview.link(self.xout_nn.input)
+            self.detection_nn.out.link(self.xout_nn.input)
             self.output_names.append("nn")
         if with_imu:
             self.imu = self.pipeline.create(dai.node.IMU)
@@ -468,7 +468,7 @@ class OAKDCamera(BaseCamera):
             self.imu.setMaxBatchReports(imu_max_batch_reports)
             self.xout_imu = self.pipeline.create(dai.node.XLinkOut)
             self.xout_imu.setStreamName("imu")
-            self.imu.preview.link(self.xout_imu.input)
+            self.imu.out.link(self.xout_imu.input)
             self.output_names.append("imu")
         self.device.startPipeline(self.pipeline)
     
@@ -486,7 +486,8 @@ class OAKDCamera(BaseCamera):
                     self.depth_frame = msg.getFrame()
                     cv2.imshow(self.depth_frame, name)
                 elif name == "nn":
-                    pass
+                    self.nn_output = msg.detections
+                    print(self.nn_output)
                 elif name == "imu":
                     for packet in msg.packets():
                         acceleroValues = packet.acceleroMeter
