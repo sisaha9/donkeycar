@@ -479,14 +479,14 @@ class OAKDCamera(BaseCamera):
             if msg is not None:
                 if name == "rgb":
                     self.rgb_frame = cv2.cvtColor(msg.getCvFrame(), cv2.COLOR_BGR2RGB)
-                    cv2.imshow(self.rgb_frame, name)
+                    cv2.imshow(name, self.rgb_frame)
                 elif name == "record":
                     with open(f'rgb_data_{self.current_date.strftime("%m_%d_%Y_%H_%M_%S")}.h265', 'wb') as recorded_data:
                         msg.getData().tofile(recorded_data)
                 elif name == "depth":
                     self.depth_frame = msg.getFrame()
                     frame = cv2.applyColorMap((self.depth_frame * (255 / self.stereo.initialConfig.getMaxDisparity())).astype(np.uint8), cv2.COLORMAP_JET)
-                    cv2.imshow(frame, name)
+                    cv2.imshow(name, frame)
                 elif name == "nn":
                     self.nn_output = msg.detections
                     print(self.nn_output)
