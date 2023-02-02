@@ -498,7 +498,7 @@ class OAKDCamera(BaseCamera):
                         self.imu_output = [acceleroValues.x, acceleroValues.y, acceleroValues.z, gyroValues.x, gyroValues.y, gyroValues.z]
 
     def run(self):
-        return []
+        return
 
     def run_threaded(self):
-        return []
+        return
