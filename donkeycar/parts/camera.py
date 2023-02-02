@@ -395,8 +395,8 @@ class OAKDCamera(BaseCamera):
         import depthai as dai
         self.device = dai.Device()
         self.frame = None
-        self.res_rgb = dai.ColorCameraProperties.SensorResolution.THE_720_P
-        self.res_mono = dai.MonoCameraProperties.SensorResolution.THE_720_P
+        self.res_rgb = dai.ColorCameraProperties.SensorResolution.THE_1080_P
+        self.res_mono = dai.MonoCameraProperties.SensorResolution.THE_480_P
         self.pipeline = dai.Pipeline()
         self.cam_rgb = self.pipeline.create(dai.node.ColorCamera)
         self.cam_rgb.setPreviewSize(image_w, image_h)
