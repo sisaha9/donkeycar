@@ -5,6 +5,9 @@ import numpy as np
 from PIL import Image
 import glob
 from donkeycar.utils import rgb2gray
+import cv2
+from pathlib import Path
+import datetime
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -386,3 +389,118 @@ class ImageListCamera(BaseCamera):
 
     def shutdown(self):
         pass
+
+class OAKDCamera(BaseCamera):
+    def __init__(self, image_w=160, image_h=120, frame_rate=20, with_record = True, with_stereo=True, with_nn=False, nn_model_path="", with_imu=True, imu_accelerometer_freq = 500, imu_gyroscope_freq=400, imu_batch_report_threshold = 1, imu_max_batch_reports=10):
+        import depthai as dai
+        self.device = dai.Device()
+        self.frame = None
+        self.res = dai.ColorCameraProperties.SensorResolution.THE_720_P
+        self.pipeline = dai.Pipeline()
+        self.cam_rgb = self.pipeline.create(dai.node.ColorCamera)
+        self.cam_rgb.setPreviewSize(image_w, image_h)
+        self.cam_rgb.setInterleaved(False)
+        self.cam_rgb.setResolution(self.res)
+        self.cam_rgb.setBoardSocket(dai.CameraBoardSocket.RGB)
+        self.cam_rgb.setFps(frame_rate)
+        if with_stereo:
+            calibData = self.device.readCalibration2()
+            lensPosition = calibData.getLensPosition(dai.CameraBoardSocket.RGB)
+            if lensPosition:
+                self.cam_rgb.initialControl.setManualFocus(lensPosition)
+        self.xout_rgb = self.pipeline.create(dai.node.XLinkOut)
+        self.xout_rgb.setStreamName("rgb")
+        self.cam_rgb.preview.link(self.xout_rgb.input)
+        self.with_record = with_record
+        self.with_stereo = with_stereo
+        self.with_nn = with_nn
+        self.with_imu = with_imu
+        self.rgb_frame = None
+        self.depth_frame = None
+        self.nn_output = None
+        self.imu_output = None
+        self.frame_rate = frame_rate
+        self.output_names = ["rgb"]
+        if with_record:
+            self.videoEnc = self.pipeline.create(dai.node.VideoEncoder)
+            self.videoEnc.setDefaultProfilePreset(1, dai.VideoEncoderProperties.Profile.H265_MAIN)
+            self.cam_rgb.preview.link(self.videoEnc)
+            self.xout_vid = self.pipeline.create(dai.node.XLinkOut)
+            self.xout_vid.setStreamName("record")
+            self.videoEnc.bitstream.link(self.xout_vid.input)
+            self.output_names.append("record")
+            self.current_date = datetime.datetime.now()
+        if with_stereo:
+            self.left = self.pipeline.create(dai.node.MonoCamera)
+            self.left.setPreviewSize(image_w, image_h)
+            self.left.setInterleaved(False)
+            self.left.setResolution(self.res)
+            self.left.setBoardSocket(dai.CameraBoardSocket.LEFT)
+            self.left.setFps(frame_rate)
+
+            self.right = self.pipeline.create(dai.node.MonoCamera)
+            self.right.setPreviewSize(image_w, image_h)
+            self.right.setInterleaved(False)
+            self.right.setResolution(self.res)
+            self.right.setBoardSocket(dai.CameraBoardSocket.RIGHT)
+            self.right.setFps(frame_rate)
+
+            self.stereo = self.pipeline.create(dai.node.StereoDepth)
+            self.stereo.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.HIGH_DENSITY)
+            self.stereo.setLeftRightCheck(True)
+            self.stereo.setDepthAlign(dai.CameraBoardSocket.RGB)
+            self.left.out.link(self.stereo.left)
+            self.right.out.link(self.stereo.right)
+            self.xout_depth = self.pipeline.create(dai.node.XLinkOut)
+            self.xout_depth.setStreamName("depth")
+            self.stereo.disparity.link(self.xout_depth.input)
+            self.output_names.append("depth")
+        if with_nn:
+            self.detection_nn = self.pipeline.create(dai.node.NeuralNetwork)
+            self.detection_nn.setBlobPath(str(Path(nn_model_path).resolve().absolute()))
+            self.cam_rgb.preview.link(self.detection_nn.input)
+            self.xout_nn = self.pipeline.create(dai.node.XLinkOut)
+            self.xout_nn.setStreamName("nn")
+            self.detection_nn.preview.link(self.xout_nn.input)
+            self.output_names.append("nn")
+        if with_imu:
+            self.imu = self.pipeline.create(dai.node.IMU)
+            self.imu.enableIMUSensor(dai.IMUSensor.ACCELEROMETER_RAW, imu_accelerometer_freq)
+            self.imu.enableIMUSensor(dai.IMUSensor.GYROSCOPE_RAW, imu_gyroscope_freq)
+            self.imu.setBatchReportThreshold(imu_batch_report_threshold)
+            self.imu.setMaxBatchReports(imu_max_batch_reports)
+            self.xout_imu = self.pipeline.create(dai.node.XLinkOut)
+            self.xout_imu.setStreamName("imu")
+            self.imu.preview.link(self.xout_imu.input)
+            self.output_names.append("imu")
+        self.device.startPipeline(self.pipeline)
+    
+    def update(self):
+        for name in self.output_names:
+            msg = self.device.getOutputQueue(name).get()
+            if msg is not None:
+                if name == "rgb":
+                    self.rgb_frame = cv2.cvtColor(msg.getFrame(), cv2.COLOR_BGR2RGB)
+                    cv2.imshow(self.rgb_frame, name)
+                elif name == "record":
+                    with open(f'rgb_data_{self.current_date.strftime("%m_%d_%Y_%H_%M_%S")}.h265', 'wb') as recorded_data:
+                        msg.getData().tofile(recorded_data)
+                elif name == "depth":
+                    self.depth_frame = msg.getFrame()
+                    cv2.imshow(self.depth_frame, name)
+                elif name == "nn":
+                    pass
+                elif name == "imu":
+                    for packet in msg.packets():
+                        acceleroValues = packet.acceleroMeter
+                        gyroValues = packet.gyroscope
+                        imuF = "{:.06f}"
+                        print(f"Accelerometer [m/s^2]: x: {imuF.format(acceleroValues.x)} y: {imuF.format(acceleroValues.y)} z: {imuF.format(acceleroValues.z)}")
+                        print(f"Gyroscope [rad/s]: x: {imuF.format(gyroValues.x)} y: {imuF.format(gyroValues.y)} z: {imuF.format(gyroValues.z)} ")
+                        self.imu_output = [acceleroValues.x, acceleroValues.y, acceleroValues.z, gyroValues.x, gyroValues.y, gyroValues.z]
+
+    def run(self):
+        return []
+
+    def run_threaded(self):
+        return []
