@@ -391,7 +391,7 @@ class ImageListCamera(BaseCamera):
         pass
 
 class OAKDCamera(BaseCamera):
-    def __init__(self, image_w=160, image_h=120, frame_rate=20, with_record = True, with_stereo=True, with_nn=False, nn_model_path="", with_imu=True, imu_accelerometer_freq = 500, imu_gyroscope_freq=400, imu_batch_report_threshold = 1, imu_max_batch_reports=10):
+    def __init__(self, image_w=160, image_h=120, frame_rate=20, with_record = True, with_stereo=True, with_nn=False, nn_model_path="", with_imu=False, imu_accelerometer_freq = 500, imu_gyroscope_freq=400, imu_batch_report_threshold = 1, imu_max_batch_reports=10):
         import depthai as dai
         self.device = dai.Device()
         self.frame = None
