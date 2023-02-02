@@ -432,14 +432,14 @@ class OAKDCamera(BaseCamera):
             self.current_date = datetime.datetime.now()
         if with_stereo:
             self.left = self.pipeline.create(dai.node.MonoCamera)
-            self.left.setPreviewSize(image_w, image_h)
+            # self.left.setPreviewSize(image_w, image_h)
             self.left.setInterleaved(False)
             self.left.setResolution(self.res)
             self.left.setBoardSocket(dai.CameraBoardSocket.LEFT)
             self.left.setFps(frame_rate)
 
             self.right = self.pipeline.create(dai.node.MonoCamera)
-            self.right.setPreviewSize(image_w, image_h)
+            # self.right.setPreviewSize(image_w, image_h)
             self.right.setInterleaved(False)
             self.right.setResolution(self.res)
             self.right.setBoardSocket(dai.CameraBoardSocket.RIGHT)
