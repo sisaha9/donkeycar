@@ -254,12 +254,26 @@ NUM_LOCATIONS = 10
 BUTTON_PRESS_NEW_TUB = False #when enabled, makes it easier to divide our data into one tub per track length if we make a new tub on each X button press.
 
 HAVE_CAMERA = False
-CAMERA_TYPE = "None"
+CAMERA_TYPE = "OAKD LITE"
 IMAGE_W = 160
 IMAGE_H = 120
-IMAGE_DEPTH = 3 
+IMAGE_FPS = 20
+RECORD_IMAGE=False
+OAKD_LITE_STEREO_ENABLED = True
+OAKD_LITE_NN_MODEL_PATH = None
 
 HAVE_GPS = False
+GPS_SERIAL = '/dev/ttyUSB1' # serial device path, like '/dev/ttyAMA1' or '/dev/ttyUSB0'
+GPS_SERIAL_BAUDRATE = 460800
+GPS_NMEA_PATH = None        # File used to record gps, like "nmea.csv".
+                            # If this is set then when waypoints are recorded then
+                            # the underlying NMEA sentences will also be saved to
+                            # this file along with their time stamps.  Then when
+                            # the path is loaded and played in auto-pilot mode then
+                            # the NMEA sentences that were recorded will be played back.
+                            # This is for debugging and tuning the PID without having
+                            # to keep driving the car.
+GPS_DEBUG = True  # set to True to log UTM position (beware; lots of logging!)
 
 DRIVE_TYPE = "gps_follow"
 #

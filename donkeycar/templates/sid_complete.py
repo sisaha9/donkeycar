@@ -110,13 +110,9 @@ def add_camera(V, cfg):
     """
     logger.info("cfg.CAMERA_TYPE %s"%cfg.CAMERA_TYPE)
     if cfg.CAMERA_TYPE == "OAKD LITE":
-        if cfg.HAVE_IMU and cfg.IMU_TYPE == "OAKD LITE":
-            pass
-        elif cfg.OAKD_LITE_STEREO_ENABLED:
-            pass
-        else:
-            pass
-        logger.info("OAKD LITE to be supported")
+        from donkeycar.parts.camera import OAKDCamera
+        cam = OAKDCamera(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H, frame_rate=cfg.IMAGE_FPS, with_record=cfg.RECORD_IMAGE, with_stereo=cfg.OAKD_LITE_STEREO_ENABLED, nn_model_path=cfg.OAKD_LITE_NN_MODEL_PATH, with_imu=(cfg.HAVE_IMU and cfg.IMU_TYPE == "OAKD LITE"))
+        V.add(cam, inputs=[], outputs=cam.get_outputs(), threaded=True)
     elif cfg.CAMERA_TYPE == "MOCK":
         from donkeycar.parts.camera import MockCamera
         cam = MockCamera(image_w=cfg.IMAGE_W, image_h=cfg.IMAGE_H, image_d=cfg.IMAGE_DEPTH)

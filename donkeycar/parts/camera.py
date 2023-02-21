@@ -391,7 +391,7 @@ class ImageListCamera(BaseCamera):
         pass
 
 class OAKDCamera(BaseCamera):
-    def __init__(self, image_w=160, image_h=120, frame_rate=20, with_record = True, with_stereo=True, with_nn=False, nn_model_path="", with_imu=False, imu_accelerometer_freq = 500, imu_gyroscope_freq=400, imu_batch_report_threshold = 1, imu_max_batch_reports=10):
+    def __init__(self, image_w=160, image_h=120, frame_rate=20, with_record = True, with_stereo=True, nn_model_path=None, with_imu=False, imu_accelerometer_freq = 500, imu_gyroscope_freq=400, imu_batch_report_threshold = 1, imu_max_batch_reports=10):
         import depthai as dai
         self.device = dai.Device()
         self.frame = None
@@ -414,7 +414,7 @@ class OAKDCamera(BaseCamera):
         self.cam_rgb.preview.link(self.xout_rgb.input)
         self.with_record = with_record
         self.with_stereo = with_stereo
-        self.with_nn = with_nn
+        self.with_nn = nn_model_path != None
         self.with_imu = with_imu
         self.rgb_frame = None
         self.depth_frame = None
@@ -423,16 +423,15 @@ class OAKDCamera(BaseCamera):
         self.frame_rate = frame_rate
         self.output_names = ["rgb"]
 
-        if with_record:
+        if self.with_record:
             self.videoEnc = self.pipeline.create(dai.node.VideoEncoder)
             self.videoEnc.setDefaultProfilePreset(1, dai.VideoEncoderProperties.Profile.H265_MAIN)
             self.cam_rgb.still.link(self.videoEnc.input)
             self.xout_vid = self.pipeline.create(dai.node.XLinkOut)
             self.xout_vid.setStreamName("record")
             self.videoEnc.bitstream.link(self.xout_vid.input)
-            self.output_names.append("record")
             self.current_date = datetime.datetime.now()
-        if with_stereo:
+        if self.with_stereo:
             self.left = self.pipeline.create(dai.node.MonoCamera)
             self.left.setResolution(self.res_mono)
             self.left.setBoardSocket(dai.CameraBoardSocket.LEFT)
@@ -453,15 +452,15 @@ class OAKDCamera(BaseCamera):
             self.xout_depth.setStreamName("depth")
             self.stereo.disparity.link(self.xout_depth.input)
             self.output_names.append("depth")
-        if with_nn:
-            self.detection_nn = self.pipeline.create(dai.node.NeuralNetwork)
+        if self.with_nn:
+            self.with_nn.detection_nn = self.pipeline.create(dai.node.NeuralNetwork)
             self.detection_nn.setBlobPath(str(Path(nn_model_path).resolve().absolute()))
             self.cam_rgb.preview.link(self.detection_nn.input)
             self.xout_nn = self.pipeline.create(dai.node.XLinkOut)
             self.xout_nn.setStreamName("nn")
             self.detection_nn.out.link(self.xout_nn.input)
             self.output_names.append("nn")
-        if with_imu:
+        if self.with_imu:
             self.imu = self.pipeline.create(dai.node.IMU)
             self.imu.enableIMUSensor(dai.IMUSensor.ACCELEROMETER_RAW, imu_accelerometer_freq)
             self.imu.enableIMUSensor(dai.IMUSensor.GYROSCOPE_RAW, imu_gyroscope_freq)
@@ -499,8 +498,17 @@ class OAKDCamera(BaseCamera):
                         print(f"Gyroscope [rad/s]: x: {imuF.format(gyroValues.x)} y: {imuF.format(gyroValues.y)} z: {imuF.format(gyroValues.z)} ")
                         self.imu_output = [acceleroValues.x, acceleroValues.y, acceleroValues.z, gyroValues.x, gyroValues.y, gyroValues.z]
 
-    def run(self):
-        return
+    def get_outputs(self):
+        return self.output_names
 
     def run_threaded(self):
-        return
+        outputs = []
+        if self.rgb_frame:
+            outputs.append(self.rgb_frame)
+        if self.depth_frame:
+            outputs.append(self.depth_frame)
+        if self.nn_output:
+            outputs.append(self.nn_output)
+        if self.imu_output:
+            outputs.append(self.imu_output)
+        return outputs
