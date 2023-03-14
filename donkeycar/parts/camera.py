@@ -391,11 +391,10 @@ class ImageListCamera(BaseCamera):
         pass
 
 class OAKD(BaseCamera):
-    import cv2
-    import depthai as dai
 
     def __init__(self, image_w=160, image_h=120, image_d=3, framerate = 20, camera_index=0):
-        
+        import cv2
+        import depthai as dai
         
         super().__init__()
 
